@@ -11,6 +11,7 @@ namespace OpenApiGenCode
                 var res = await http.GetAsync("https://misskey.04.si/api.json");
                 json = await res.Content.ReadAsStringAsync();
             }
+            //json = File.ReadAllText("api.json");
             Generator.GenerateCode(json);
         }
     }

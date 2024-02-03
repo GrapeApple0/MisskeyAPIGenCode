@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using System.Text.Json.Nodes;
 using static LibOpenApiGen.ApiDocument;
 
 namespace LibOpenApiGen
@@ -45,7 +46,16 @@ namespace LibOpenApiGen
             sb.Append($"\t\t\tsb.Append(\"class {key}: {{\\n\");\n");
             foreach (var property in properties)
             {
-                if (property.Value.Type == "array")
+                var type = "";
+                if (property.Value.Type is JsonValue jv && jv.AsValue().TryGetValue<string>(out var s))
+                {
+                    type = s;
+                }
+                else if (property.Value.Type is JsonArray ja && ja != null && ja.Count > 0 && ja[0] != null)
+                {
+                    type = ja[0].ToString();
+                }
+                if (type == "array")
                 {
                     sb.Append($"\t\t\tsb.Append(\"  {property.Key}: {{\\n\");\n");
                     if (property.Value.Items != null && property.Value.Items.Ref != null)
@@ -97,12 +107,30 @@ namespace LibOpenApiGen
             sb.Append("\t\t}\n");
         }
 
-        private static void GeneratePropertiesCode(StringBuilder sb, Dictionary<string, Property> properties)
+        private static void GeneratePropertiesCode(StringBuilder sb, Dictionary<string, Property> properties, int indent = 2, bool addTypes = true)
         {
             string type;
             string name;
             foreach (var property in properties)
             {
+                var indentStr = "";
+                for (int i = 0; i < indent; i++) indentStr += "\t";
+                bool nullable = false;
+                name = ConvertToPascalCase(property.Key);
+                if (property.Value.Type == null) type = "object";
+                if (property.Value.Type is JsonValue jv && jv.AsValue().TryGetValue<string>(out var s))
+                {
+                    type = s;
+                }
+                else if (property.Value.Type is JsonArray ja && ja != null && ja.Count > 0 && ja[0] != null)
+                {
+                    type = ja[0].ToString();
+                }
+                else
+                {
+                    var st = property.Value.Type.ToString();
+                    type = property.Value.Type != null && st != null ? st : "";
+                }
                 if (property.Value.Ref != null)
                 {
                     var Ref = property.Value.Ref.Replace("#/components/schemas/", "");
@@ -110,23 +138,74 @@ namespace LibOpenApiGen
                 }
                 else
                 {
-                    type = $"{property.Value.Type.ToLower()}";
+                    type = $"{type.ToLower()}";
                 }
-                if (property.Value.Type == "array")
+                if (type == "array")
                 {
                     useList = true;
                     if (property.Value.Items == null) continue;
                     if (property.Value.Items.Type != null)
                     {
-                        type = $"List<{property.Value.Items.Type}>";
+                        string itemsType = "";
+                        bool nullableItems = false;
+                        if (property.Value.Items.Type is JsonValue jv2 && jv2.AsValue().TryGetValue<string>(out var s2))
+                        {
+                            itemsType = s2;
+                        }
+                        else if (property.Value.Items.Type is JsonArray ja && ja != null && ja.Count > 0 && ja[0] != null)
+                        {
+                            itemsType = ja[0].ToString();
+                            nullableItems = true;
+                        }
+                        type = $"List<{itemsType}>";
                         if (property.Value.Items.Ref != null)
                         {
                             var Ref = property.Value.Items.Ref.Replace("#/components/schemas/", "");
                             type = $"List<{Ref}>";
                         }
+                        else if (itemsType == "object" && property.Value.Items != null)
+                        {
+                            if (addTypes) sb.Append($"{indentStr}public class {name}ItemType {{\n");
+                            else sb.Append($"{indentStr}public class {name}Type {{\n");
+                            GeneratePropertiesCode(sb, new Dictionary<string, Property>() { { name, property.Value.Items } }, indent + 1, false);
+                            sb.Append($"{indentStr}}}\n");
+                            type = $"List<{name}ItemType>";
+                        }
+                        if (nullableItems)
+                        {
+                            type += "?";
+                        }
                         if (property.Value.Items != null && property.Value.Items.Items != null && property.Value.Items.Items.Type != null)
                         {
-                            type = $"List<{property.Value.Items.Items.Type}>";
+                            string itemsItemType = "";
+                            bool nullableItemsItems = false;
+                            if (property.Value.Items.Type is JsonValue jv3 && jv3.AsValue().TryGetValue<string>(out var s3))
+                            {
+                                itemsItemType = s3;
+                            }
+                            else if (property.Value.Items.Type is JsonArray ja && ja != null && ja.Count > 0 && ja[0] != null)
+                            {
+                                itemsItemType = ja[0].ToString();
+                                nullableItemsItems = true;
+                            }
+                            type = $"List<List<{itemsItemType}>>";
+                            if (property.Value.Items.Items.Ref != null)
+                            {
+                                var Ref = property.Value.Items.Items.Ref.Replace("#/components/schemas/", "");
+                                type = $"List<List<{Ref}>>";
+                            }
+                            else if (property.Value.Items.Items != null)
+                            {
+                                if (addTypes) sb.Append($"{indentStr}public class {name}ItemsItemType {{\n");
+                                else sb.Append($"{indentStr}public class {name}ItemType {{\n");
+                                GeneratePropertiesCode(sb, new Dictionary<string, Property>() { { name, property.Value.Items.Items } }, indent + 1, false);
+                                sb.Append($"{indentStr}}}\n");
+                                type = $"List<List<{name}ItemsItemType>>";
+                            }
+                            if (nullableItemsItems)
+                            {
+                                type += "?";
+                            }
                         }
                     }
                 }
@@ -138,16 +217,19 @@ namespace LibOpenApiGen
                 {
                     type = "decimal";
                 }
+                if (type == "integer")
+                {
+                    type = "int";
+                }
                 if (type == "boolean")
                 {
                     type = "bool";
                 }
-                if (property.Value.Nullable.GetValueOrDefault(false) || property.Value.Optional.GetValueOrDefault(false))
+                if (nullable)
                 {
                     type += "?";
                 }
-                name = ConvertToPascalCase(property.Key);
-                sb.Append($"\t\tpublic {type} {name} {{ get; set; }}\n");
+                sb.Append($"{indentStr}public {type} {name} {{ get; set; }}\n");
             }
         }
 
@@ -165,19 +247,6 @@ namespace LibOpenApiGen
                 GeneratePropertiesCode(sb, component.Properties);
                 GenerateToStringCode(sb, component.Properties, key);
             }
-            //else if (component.OneOf != null)
-            //{
-            //    sb.Append("\t\tpublic JsonNode json {get;set;}\n");
-            //    foreach (var property in component.OneOf)
-            //    {
-            //        sb.Append($"\t\tpublic {property.Ref}? {key}{property.Ref} {{get => JsonSerializer.Deserialize<{property.Ref}>(json);}}\n");
-            //    }
-            //    sb.Append($"\t\tpublic string {key}TypeName {{\n");
-            //    sb.Append("\t\t\tget {\n");
-            //    sb.Append($"\t\t\t\treturn {key + component.OneOf[0].Ref} != null ? \"{key}\" : {key + component.OneOf[1].Ref} != null ? \"{key}\" : \"InvalidType\";\n");
-            //    sb.Append("\t\t\t}\n");
-            //    sb.Append("\t\t}\n");
-            //}
             else if (component.OneOf != null || component.AllOf != null)
             {
                 var properties = ReturnAllPropertiesDictionary(component, root);

@@ -24,11 +24,9 @@ namespace LibOpenApiGen
         public Dictionary<string, Dictionary<string, ComponentsMethod>> Components { get; set; }
         public class Property
         {
-            public string Type { get; set; }
+            public JsonNode Type { get; set; }
             public string? Description { get; set; }
             public JsonNode? Properties { get; set; }
-            public bool? Nullable { get; set; }
-            public bool? Optional { get; set; }
             public object? Default { get; set; }
             public string? Format { get; set; }
             public JsonNode? Example { get; set; }
@@ -36,14 +34,12 @@ namespace LibOpenApiGen
             public Property? Items { get; set; }
             public string? Ref { get; set; }
         }
-
         public class PathsMethod
         {
             public class Schema
             {
-                public string Type { get; set; }
+                public object Type { get; set; }
                 public Dictionary<string, Property>? Properties { get; set; }
-                public bool? Nullable { get; set; }
                 public string? Ref { get; set; }
                 public string[]? Required { get; set; }
                 public JsonNode[]? AnyOf { get; set; }

@@ -39,7 +39,7 @@ namespace LibOpenApiGen
             var apis = new StringBuilder();
             foreach (var item in pathTrees)
             {
-                if (item.Key != "charts")
+                if (item.Key != "admin" && item.Key != "charts")
                 {
                     code = Controller.GenerateRequestCode(jsonNode, item, "Misharp.Controls");
                     string path = $"./Controls/{ApiDocument.ConvertToPascalCase(item.Key)}.cs";
