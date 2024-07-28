@@ -1,9 +1,0 @@
-version: "3"
-
-services:
-  misskey:
-    build: .
-    restart: always
-    volumes:
-      - ./.tmp:/misskey/packages/backend/built/
-    

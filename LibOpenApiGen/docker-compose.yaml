@@ -1,0 +1,7 @@
+version: "3"
+
+services:
+  misskey:
+    build: .
+    volumes:
+      - ./.tmp:/misskey/.docker-tmp

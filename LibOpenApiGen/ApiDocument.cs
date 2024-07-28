@@ -1,5 +1,6 @@
 ﻿using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace LibOpenApiGen
 {
@@ -16,9 +17,9 @@ namespace LibOpenApiGen
 
         public static string ConvertToPascalCase(string str)
         {
-            return Regex.Replace(str, @"\b\p{Ll}", match => match.Value.ToUpper());
+            return Regex.Replace(str, @"(^\w|-\w)", (e) => e.Value.Replace("-", "").ToUpper());//Regex.Replace(str, @"\b\p{Ll}", match => match.Value.ToUpper());
         }
-
+        public JsonNode Info { get; set; }
         public string Openapi { get; set; }
         public Dictionary<string, Dictionary<HttpMethod, PathsMethod>> Paths { get; set; }
         public Dictionary<string, Dictionary<string, ComponentsMethod>> Components { get; set; }
@@ -26,13 +27,14 @@ namespace LibOpenApiGen
         {
             public JsonNode Type { get; set; }
             public string? Description { get; set; }
-            public JsonNode? Properties { get; set; }
+            public Dictionary<string, Property>? Properties { get; set; }
             public object? Default { get; set; }
             public string? Format { get; set; }
             public JsonNode? Example { get; set; }
             public string[]? Enum { get; set; }
             public Property? Items { get; set; }
             public string? Ref { get; set; }
+            public List<Dictionary<string, string>>? AllOf { get; set; }
         }
         public class PathsMethod
         {
@@ -42,7 +44,7 @@ namespace LibOpenApiGen
                 public Dictionary<string, Property>? Properties { get; set; }
                 public string? Ref { get; set; }
                 public string[]? Required { get; set; }
-                public JsonNode[]? AnyOf { get; set; }
+                public Property[]? AnyOf { get; set; }
                 public Property[]? OneOf { get; set; }
                 public Property? Items { get; set; }
             }
@@ -81,5 +83,4 @@ namespace LibOpenApiGen
             public Property[]? AllOf { get; set; }
         }
     }
-
 }
