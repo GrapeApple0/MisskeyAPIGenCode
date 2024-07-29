@@ -111,7 +111,7 @@ namespace LibOpenApiGen
             sb.Append($"{indentStr}}}\n");
         }
 
-        private static void GeneratePropertiesCode(StringBuilder sb, Dictionary<string, Property> properties, string key, int indent = 2, bool addTypes = true)
+        public static void GeneratePropertiesCode(StringBuilder sb, Dictionary<string, Property> properties, string key, int indent = 2, bool addTypes = true)
         {
             string type;
             string name;

@@ -1,6 +1,5 @@
 ﻿using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace LibOpenApiGen
 {
@@ -35,6 +34,7 @@ namespace LibOpenApiGen
             public Property? Items { get; set; }
             public string? Ref { get; set; }
             public List<Dictionary<string, string>>? AllOf { get; set; }
+            public JsonNode? AdditionalProperties { get; set; }
         }
         public class PathsMethod
         {

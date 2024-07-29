@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -178,9 +179,11 @@ namespace LibOpenApiGen
             sb.Append("\t\t\t}\n");
         }
 
-        private static void GenerateArg(StringBuilder sb, Dictionary<string, object[]> ps, Dictionary<string, string[]> enums, string funcName)
+        private static void GenerateArg(StringBuilder sb, Dictionary<string, object[]> ps, Dictionary<string, string[]> enums, string funcName, out List<string> emptyLists, out StringBuilder paramObjectClass)
         {
             var usingDefaultParams = new Dictionary<string, Property?>();
+            var lists = new List<string>();
+            var sb2 = new StringBuilder();
             ps.ToList().ForEach(p =>
             {
                 if (p.Value[1] is Property prop)
@@ -188,6 +191,7 @@ namespace LibOpenApiGen
                     string rawType = "";
                     bool nullable = false;
                     bool isIdOrDate = false;
+                    bool isList = false;
                     if (prop.Type == null)
                     {
                         rawType = "JsonNode";
@@ -229,6 +233,14 @@ namespace LibOpenApiGen
                         {
                             rawType = "List<JsonNode>";
                         }
+                        nullable = true;
+                        isList = true;
+                        lists.Add(p.Key);
+                        usingDefaultParams.Add(p.Key, new Property()
+                        {
+                            Type = JsonSerializer.Deserialize<JsonNode>($"[\"{rawType}\",\"null\"]"),
+                            Default = null,
+                        });
                     }
                     if (rawType == "number")
                     {
@@ -252,32 +264,44 @@ namespace LibOpenApiGen
                             Default = null,
                         });
                     }
+                    if (rawType == "object")
+                    {
+                        rawType = "JsonNode";
+                        if (prop.Properties != null)
+                        {
+                            sb2.Append($"\t\tpublic class {ConvertToPascalCase(funcName.Replace("/", "-"))}{ConvertToPascalCase(p.Key)}ParamObject {{\n");
+                            Modeller.GeneratePropertiesCode(sb2, prop.Properties, "", 3);
+                            sb2.Append("\t\t}\n");
+                            rawType = $"{ConvertToPascalCase(funcName.Replace("/", "-"))}{ConvertToPascalCase(p.Key)}ParamObject";
+                        }
+                    }
                     if (nullable)
                     {
                         rawType += "?";
                     }
-                    if (rawType == "object") rawType = "JsonNode";
-                    if ((prop.Default != null || nullable || rawType == "array") && !isIdOrDate)
+                    if (!isIdOrDate && !isList)
                     {
-                        usingDefaultParams.Add(p.Key, p.Value[1] as Property);
-                    }
-                    else if (prop != null && !isIdOrDate)
-                    {
-                        if (prop.Format != null && prop.Format == "binary")
+                        if (prop.Default != null || nullable || rawType == "array")
                         {
-                            rawType = "Stream";
+                            usingDefaultParams.Add(p.Key, p.Value[1] as Property);
                         }
-                        if (prop.Enum != null)
+                        else if (prop != null)
                         {
-                            enums.Add(ConvertToPascalCase(funcName) + ConvertToPascalCase(p.Key), prop.Enum);
-                            rawType = $"{ConvertToPascalCase(funcName)}{ConvertToPascalCase(p.Key)}Enum";
+                            if (prop.Format != null && prop.Format == "binary")
+                            {
+                                rawType = "Stream";
+                            }
+                            if (prop.Enum != null)
+                            {
+                                enums.Add(ConvertToPascalCase(funcName) + ConvertToPascalCase(p.Key), prop.Enum);
+                                rawType = $"{ConvertToPascalCase(funcName)}{ConvertToPascalCase(p.Key)}Enum";
+                            }
+                            sb.Append($"{rawType} {p.Key}");
+                            if (!p.Equals(ps.ToList().Last()) || usingDefaultParams.Count != 0) sb.Append(",");
                         }
-                        sb.Append($"{rawType} {p.Key}");
-                        if (!p.Equals(ps.ToList().Last()) || usingDefaultParams.Count != 0) sb.Append(",");
                     }
                 }
             });
-
             usingDefaultParams.ToList().ForEach(p =>
             {
                 if (p.Value != null)
@@ -362,11 +386,23 @@ namespace LibOpenApiGen
                     {
                         rawType = "int";
                     }
-                    if (rawType == "object") rawType = "JsonNode";
+                    //if (rawType == "object")
+                    //{
+                    //    rawType = "JsonNode";
+                    //    if (prop.Properties != null)
+                    //    {
+                    //        sb.Append($"\t\tpublic class {ConvertToPascalCase(funcName.Replace("/", "-"))}{ConvertToPascalCase(p.Key)}ParamObject {{\n");
+                    //        Modeller.GeneratePropertiesCode(sb, prop.Properties, "", 3);
+                    //        sb.Append("\t\t}\n");
+                    //        rawType = $"{ConvertToPascalCase(funcName.Replace("/", "-"))}{ConvertToPascalCase(p.Key)}ParamObject";
+                    //    }
+                    //}
                     sb.Append($"{rawType}{(nullable || defaultValue == "null" ? "?" : "")} {p.Key} = {defaultValue}");
                     if (!p.Equals(usingDefaultParams.ToList().Last())) sb.Append(",");
                 }
             });
+            emptyLists = lists;
+            paramObjectClass = sb2;
         }
 
         private static void GenerateParamDictionaryCode(StringBuilder sb, Dictionary<string, object[]> ps)
@@ -390,13 +426,16 @@ namespace LibOpenApiGen
             var thirdClassName = new Dictionary<string, List<string>>();
             pathTrees.Value.ForEach(path =>
             {
-                var pathMethod = jsonNode.Paths[$"/{path}"][ApiDocument.HttpMethod.Post];
-                var trees = pathMethod.Summary.Split("/");
-                // パスが3階層以上の場合は別途クラスを作るように
-                if (trees.Length >= 3)
+                if (!path.StartsWith("i/2fa"))
                 {
-                    if (!thirdClassName.ContainsKey(trees[1])) thirdClassName[trees[1]] = new List<string> { pathMethod.Summary };
-                    else thirdClassName[trees[1]].Add(pathMethod.Summary);
+                    var pathMethod = jsonNode.Paths[$"/{path}"][ApiDocument.HttpMethod.Post];
+                    var trees = pathMethod.Summary.Split("/");
+                    // パスが3階層以上の場合は別途クラスを作るように
+                    if (trees.Length >= 3)
+                    {
+                        if (!thirdClassName.ContainsKey(trees[1])) thirdClassName[trees[1]] = new List<string> { pathMethod.Summary };
+                        else thirdClassName[trees[1]].Add(pathMethod.Summary);
+                    }
                 }
             });
             thirdClassName.Keys.ToList().ForEach(className =>
@@ -446,11 +485,11 @@ namespace LibOpenApiGen
                             else if (property.Value.Type is JsonValue jv)
                             {
                                 jv.AsValue().TryGetValue<string>(out var s);
-                                type = s;
+                                if (s != null) type = s;
                             }
                             else if (property.Value.Type is JsonArray ja)
                             {
-                                if (ja != null && ja.Count > 0 && ja[0] != null) type = ja[0].ToString();
+                                if (ja != null && ja.Count > 0 && ja[0] != null) type = ja[0]?.ToString() ?? "";
                             }
                             else
                             {
@@ -535,8 +574,14 @@ namespace LibOpenApiGen
                             if (type == "boolean") type = "bool";
                             if (type == "object")
                             {
-                                property.Value.Properties?.Values.ToList().ForEach(p => Console.WriteLine(GetPropertyType(p)));
                                 type = "JsonNode";
+                                if (property.Value.Properties != null)
+                                {
+                                    sb.Append($"\t\tpublic class {ConvertToPascalCase(pathTree.Replace("/", "-"))}{ConvertToPascalCase(property.Key)}PropertyObject {{\n");
+                                    Modeller.GeneratePropertiesCode(sb, property.Value.Properties, "", 3);
+                                    sb.Append("\t\t}\n");
+                                    type = $"{ConvertToPascalCase(pathTree.Replace("/", "-"))}{ConvertToPascalCase(property.Key)}PropertyObject";
+                                }                                
                             }
                             ps.Add(property.Key, new object[] { type, property.Value });
                         });
@@ -560,15 +605,19 @@ namespace LibOpenApiGen
                             default:
                                 break;
                         }
-                        if (needParam) GenerateArg(sb, ps, enums, funcName);
+                        List<string> list = new();
+                        var paramObjectClass = new StringBuilder();
+                        if (needParam) GenerateArg(sb, ps, enums, funcName, out list, out paramObjectClass);
                         sb.Append(")\n");
                         sb.Append("\t\t{\n");
+                        if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                         if (needParam) GenerateParamDictionaryCode(sb, ps);
                         sb.Append($"\t\t\tResponse<Model.{Ref}> result = await _app.Request<Model.{Ref}>(\"{pathTree}\", ");
                         if (needParam) sb.Append("param, ");
                         sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                         sb.Append("\t\t\treturn result;\n");
                         sb.Append("\t\t}\n");
+                        sb.Append(paramObjectClass);
                     }
 
                     if (responseSchema.Properties != null)
@@ -603,15 +652,19 @@ namespace LibOpenApiGen
                             default:
                                 break;
                         }
-                        if (needParam) GenerateArg(sb, ps, enums, funcName);
+                        List<string> list = new();
+                        var paramObjectClass = new StringBuilder();
+                        if (needParam) GenerateArg(sb, ps, enums, funcName, out list, out paramObjectClass);
                         sb.Append(")\n");
                         sb.Append("\t\t{\n");
+                        if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                         if (needParam) GenerateParamDictionaryCode(sb, ps);
                         sb.Append($"\t\t\tResponse<{responseClassName}Response> result = await _app.Request<{responseClassName}Response>(\"{pathTree}\", ");
                         if (needParam) sb.Append("param, ");
                         sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                         sb.Append("\t\t\treturn result;\n");
                         sb.Append("\t\t}\n");
+                        sb.Append(paramObjectClass);
                     }
 
                     if (responseSchema.Items != null)
@@ -620,6 +673,7 @@ namespace LibOpenApiGen
                             Ref = responseSchema.Items.Ref.Replace("#/components/schemas/", "");
                         sb.Append($"\t\tpublic async Task<Response<List<{GetPropertyType(responseSchema.Items)}>>> ");
                         var funcName = "";
+                        var list = new List<string>();
                         switch (trees.Length)
                         {
                             case 1:
@@ -634,15 +688,18 @@ namespace LibOpenApiGen
                                 break;
                         }
                         sb.Append("(");
-                        if (needParam) GenerateArg(sb, ps, enums, funcName);
+                        var paramObjectClass = new StringBuilder();
+                        if (needParam) GenerateArg(sb, ps, enums, funcName, out list, out paramObjectClass);
                         sb.Append(")\n");
                         sb.Append("\t\t{\n");
+                        if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                         if (needParam) GenerateParamDictionaryCode(sb, ps);
                         sb.Append($"\t\t\tResponse<List<{GetPropertyType(responseSchema.Items)}>> result = await _app.Request<List<{GetPropertyType(responseSchema.Items)}>>(\"{pathTree}\", ");
                         if (needParam) sb.Append("param, ");
                         sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                         sb.Append("\t\t\treturn result;\n");
                         sb.Append("\t\t}\n");
+                        sb.Append(paramObjectClass);
                     }
 
                     if (responseSchema != null && responseSchema.OneOf != null || responseSchema.AnyOf != null)
@@ -678,21 +735,26 @@ namespace LibOpenApiGen
                             default:
                                 break;
                         }
-                        if (needParam) GenerateArg(sb, ps, enums, funcName);
+                        List<string> list = new();
+                        var paramObjectClass = new StringBuilder();
+                        if (needParam) GenerateArg(sb, ps, enums, funcName, out list, out paramObjectClass);
                         sb.Append(")\n");
                         sb.Append("\t\t{\n");
+                        if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                         if (needParam) GenerateParamDictionaryCode(sb, ps);
                         sb.Append($"\t\t\tResponse<{responseClassName}Response> result = await _app.Request<{responseClassName}Response>(\"{pathTree}\", ");
                         if (needParam) sb.Append("param, ");
                         sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                         sb.Append("\t\t\treturn result;\n");
                         sb.Append("\t\t}\n");
+                        sb.Append(paramObjectClass);
                     }
                 }
                 else if (nothingReturn && trees.Length <= 2)
                 {
                     sb.Append($"\t\tpublic async Task<Response<Model.EmptyResponse>> ");
                     var funcName = "";
+                    var list = new List<string>();
                     switch (trees.Length)
                     {
                         case 1:
@@ -707,9 +769,11 @@ namespace LibOpenApiGen
                             break;
                     }
                     sb.Append("(");
-                    if (needParam) GenerateArg(sb, ps, enums, funcName);
+                    var paramObjectClass = new StringBuilder();
+                    if (needParam) GenerateArg(sb, ps, enums, funcName, out list, out paramObjectClass);
                     sb.Append(")\n");
                     sb.Append("\t\t{\n");
+                    if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                     if (needParam) GenerateParamDictionaryCode(sb, ps);
                     sb.Append($"\t\t\tvar result = await _app.Request<Model.EmptyResponse>(\"{pathTree}\", ");
                     if (needParam) sb.Append("param, ");
@@ -717,6 +781,7 @@ namespace LibOpenApiGen
                     sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                     sb.Append("\t\t\treturn result;\n");
                     sb.Append("\t\t}\n");
+                    sb.Append(paramObjectClass);
                 }
                 if (enums.Count > 0)
                 {
@@ -816,7 +881,9 @@ namespace LibOpenApiGen
                                 if (type == "number") type = "decimal";
                                 if (type == "integer") type = "int";
                                 if (type == "boolean") type = "bool";
-                                if (type == "object") type = "JsonNode";
+                                if (type == "object") { 
+                                    type = "JsonNode"; 
+                                }
                                 ps.Add(property.Key, new object[] { type, property.Value });
                             });
                         }
@@ -825,10 +892,13 @@ namespace LibOpenApiGen
                             if (responseSchema.Ref != null)
                             {
                                 Ref = responseSchema.Ref.Replace("#/components/schemas/", "");
+                                var list = new List<string>();
                                 sb.Append($"\t\tpublic async Task<Response<Model.{Ref}>> {ConvertToPascalCase(trees[2])}(");
-                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]));
+                                var paramObjectClass = new StringBuilder();
+                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]), out list, out paramObjectClass);
                                 sb.Append(")\n");
                                 sb.Append("\t\t{\n");
+                                if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                                 if (needParam) GenerateParamDictionaryCode(sb, ps);
                                 if (useForm)
                                     sb.Append($"\t\t\tvar result = await _app.RequestFormData<Model.{Ref}>(\"{pathTree}\", ");
@@ -838,20 +908,24 @@ namespace LibOpenApiGen
                                 sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                                 sb.Append("\t\t\treturn result;\n");
                                 sb.Append("\t\t}\n");
+                                sb.Append(paramObjectClass);
                             }
 
                             if (responseSchema.Properties != null)
                             {
                                 var responseClassName = "";
+                                var list = new List<string>();
                                 responseClassName = ConvertToPascalCase(trees[0]) + ConvertToPascalCase(trees[1]) + ConvertToPascalCase(trees[2]);
                                 sb.Append($"\t\tpublic class {responseClassName}Response {{\n");
                                 GeneratePropertiesCode(sb, responseSchema.Properties);
                                 GenerateToStringCode(sb, responseSchema.Properties);
                                 sb.Append("\t\t}\n");
                                 sb.Append($"\t\tpublic async Task<Response<{responseClassName}Response>> {ConvertToPascalCase(trees[2])}(");
-                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]));
+                                var paramObjectClass = new StringBuilder();
+                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]), out list, out paramObjectClass);
                                 sb.Append(")\n");
                                 sb.Append("\t\t{\n");
+                                if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                                 if (needParam) GenerateParamDictionaryCode(sb, ps);
                                 if (useForm)
                                     sb.Append($"\t\t\tvar result = await _app.RequestFormData<{responseClassName}Response>(\"{pathTree}\", ");
@@ -861,18 +935,22 @@ namespace LibOpenApiGen
                                 sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                                 sb.Append("\t\t\treturn result;\n");
                                 sb.Append("\t\t}\n");
+                                sb.Append(paramObjectClass);
                             }
 
                             if (responseSchema.Items != null)
                             {
+                                var list = new List<string>();
                                 if (responseSchema.Items.Ref != null)
                                     Ref = responseSchema.Items.Ref.Replace("#/components/schemas/", "");
                                 sb.Append($"\t\tpublic async Task<Response<List<{GetPropertyType(responseSchema.Items)}>>> ");
                                 sb.Append($"{ConvertToPascalCase(trees[2])}");
                                 sb.Append("(");
-                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]));
+                                var paramObjectClass = new StringBuilder();
+                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]), out list, out paramObjectClass);
                                 sb.Append(")\n");
                                 sb.Append("\t\t{\n");
+                                if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                                 if (needParam) GenerateParamDictionaryCode(sb, ps);
                                 if (useForm)
                                     sb.Append($"\t\t\tvar result = await _app.RequestFormData<List<{GetPropertyType(responseSchema.Items)}>>(\"{pathTree}\", ");
@@ -882,21 +960,25 @@ namespace LibOpenApiGen
                                 sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                                 sb.Append("\t\t\treturn result;\n");
                                 sb.Append("\t\t}\n");
+                                sb.Append(paramObjectClass);
                             }
 
                             if (responseSchema != null && responseSchema.OneOf != null || responseSchema.AnyOf != null)
                             {
                                 var responseProperties = ReturnAllPropertiesDictionary(responseSchema, jsonNode.Components["schemas"]);
                                 var responseClassName = "";
+                                var list = new List<string>();
                                 responseClassName = ConvertToPascalCase(trees[0]) + ConvertToPascalCase(trees[1]) + ConvertToPascalCase(trees[2]);
                                 sb.Append($"\t\tpublic class {responseClassName}Response {{\n");
                                 GeneratePropertiesCode(sb, responseProperties);
                                 GenerateToStringCode(sb, responseProperties);
                                 sb.Append("\t\t}\n");
                                 sb.Append($"\t\tpublic async Task<Response<{responseClassName}Response>> {ConvertToPascalCase(trees[2])}(");
-                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]));
+                                var paramObjectClass = new StringBuilder();
+                                if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]), out list, out paramObjectClass);
                                 sb.Append(")\n");
                                 sb.Append("\t\t{\n");
+                                if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                                 if (needParam) GenerateParamDictionaryCode(sb, ps);
                                 if (useForm)
                                     sb.Append($"\t\t\tvar result = await _app.RequestFormData<{responseClassName}Response>(\"{pathTree}\", ");
@@ -906,14 +988,18 @@ namespace LibOpenApiGen
                                 sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                                 sb.Append("\t\t\treturn result;\n");
                                 sb.Append("\t\t}\n");
+                                sb.Append(paramObjectClass);
                             }
                         }
                         else if (nothingReturn)
                         {
+                            var list = new List<string>();
                             sb.Append($"\t\tpublic async Task<Response<Model.EmptyResponse>> {ConvertToPascalCase(trees[2])}(");
-                            if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]));
+                            var paramObjectClass = new StringBuilder();
+                            if (needParam) GenerateArg(sb, ps, enums, ConvertToPascalCase(trees[2]), out list, out paramObjectClass);
                             sb.Append(")\n");
                             sb.Append("\t\t{\n");
+                            if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
                             if (needParam) GenerateParamDictionaryCode(sb, ps);
                             sb.Append($"\t\t\tvar result = await _app.Request<Model.EmptyResponse>(\"{pathTree}\", ");
                             if (needParam) sb.Append("param, ");
@@ -921,6 +1007,7 @@ namespace LibOpenApiGen
                             sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
                             sb.Append("\t\t\treturn result;\n");
                             sb.Append("\t\t}\n");
+                            sb.Append(paramObjectClass);
                         }
                     }
                     sb.Append("\t}\n");
