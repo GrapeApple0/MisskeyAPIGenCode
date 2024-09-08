@@ -304,7 +304,7 @@ namespace LibOpenApiGen
             sb.Append("\t\t{\n");
             //if (list.Count > 0) list.ForEach(l => sb.Append($"\t\t\t{l} ??= new();\n"));
             if (needParam) GenerateParamDictionaryCode(sb, ps);
-            sb.Append($"\t\t\tvar result = await _app.Request{(useForm ? "FormData" : "")}<Model.EmptyResponse>(\"{pathTree}\", ");
+            sb.Append($"\t\t\tvar result = await _app.Request{(useForm ? "FormData" : "")}<{responseType}>(\"{pathTree}\", ");
             if (needParam) sb.Append("param, ");
             sb.Append("successStatusCode: System.Net.HttpStatusCode.NoContent, ");
             sb.Append($"useToken: {(pathMethod.Security != null ? "true" : "false")});\n");
