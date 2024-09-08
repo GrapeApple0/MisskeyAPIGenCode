@@ -14,14 +14,10 @@ namespace LibOpenApiGen
             Delete,
         }
 
-        public static string ConvertToPascalCase(string str)
-        {
-            return Regex.Replace(str, @"(^\w|-\w)", (e) => e.Value.Replace("-", "").ToUpper());//Regex.Replace(str, @"\b\p{Ll}", match => match.Value.ToUpper());
-        }
         public JsonNode Info { get; set; }
-        public string Openapi { get; set; }
+        public string OpenAPI { get; set; }
         public Dictionary<string, Dictionary<HttpMethod, PathsMethod>> Paths { get; set; }
-        public Dictionary<string, Dictionary<string, ComponentsMethod>> Components { get; set; }
+        public Dictionary<string, Dictionary<string, Schema>> Components { get; set; }
         public class Property
         {
             public JsonNode Type { get; set; }
@@ -33,22 +29,12 @@ namespace LibOpenApiGen
             public string[]? Enum { get; set; }
             public Property? Items { get; set; }
             public string? Ref { get; set; }
+            public bool? UniqueItems { get; set; }
             public List<Dictionary<string, string>>? AllOf { get; set; }
             public JsonNode? AdditionalProperties { get; set; }
         }
         public class PathsMethod
         {
-            public class Schema
-            {
-                public object Type { get; set; }
-                public Dictionary<string, Property>? Properties { get; set; }
-                public string? Ref { get; set; }
-                public string[]? Required { get; set; }
-                public Property[]? AnyOf { get; set; }
-                public Property[]? OneOf { get; set; }
-                public Property? Items { get; set; }
-            }
-
             public class ContentType
             {
                 public Schema Schema { get; set; }
@@ -74,13 +60,17 @@ namespace LibOpenApiGen
             public Dictionary<int, ResponsesClass> Responses { get; set; }
         }
 
-        public class ComponentsMethod
+        public class Schema
         {
-            public string Type { get; set; }
+            public object Type { get; set; }
             public Dictionary<string, Property>? Properties { get; set; }
+            public string? Ref { get; set; }
             public string[]? Required { get; set; }
-            public Property[]? OneOf { get; set; }
+            public Property[]? AnyOf { get; set; }
             public Property[]? AllOf { get; set; }
+            public Property[]? OneOf { get; set; }
+            public Property? Items { get; set; }
+            public JsonNode? AdditionalProperties { get; set; }
         }
     }
 }

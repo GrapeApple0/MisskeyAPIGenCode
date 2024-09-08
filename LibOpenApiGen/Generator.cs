@@ -36,9 +36,18 @@ namespace LibOpenApiGen
             var pathTrees = new Dictionary<string, List<string>>();
             foreach (var path in jsonNode.Paths)
             {
-                var trees = path.Value[ApiDocument.HttpMethod.Post].Summary.Split("/");
-                if (!pathTrees.ContainsKey(trees[0])) pathTrees[trees[0]] = new List<string> { path.Value[ApiDocument.HttpMethod.Post].Summary };
-                else pathTrees[trees[0]].Add(path.Value[ApiDocument.HttpMethod.Post].Summary);
+                if (path.Value.ContainsKey(ApiDocument.HttpMethod.Post))
+                {
+                    var trees = path.Value[ApiDocument.HttpMethod.Post].Summary.Split("/");
+                    if (!pathTrees.ContainsKey(trees[0])) pathTrees[trees[0]] = new List<string> { path.Value[ApiDocument.HttpMethod.Post].Summary };
+                    else pathTrees[trees[0]].Add(path.Value[ApiDocument.HttpMethod.Post].Summary);
+                }
+                else if (path.Value.ContainsKey(ApiDocument.HttpMethod.Get))
+                {
+                    var trees = path.Value[ApiDocument.HttpMethod.Get].Summary.Split("/");
+                    if (!pathTrees.ContainsKey(trees[0])) pathTrees[trees[0]] = new List<string> { path.Value[ApiDocument.HttpMethod.Get].Summary };
+                    else pathTrees[trees[0]].Add(path.Value[ApiDocument.HttpMethod.Get].Summary);
+                }
             }
             var constructApis = new StringBuilder();
             var apis = new StringBuilder();
@@ -47,11 +56,11 @@ namespace LibOpenApiGen
                 if (item.Key != "admin" && item.Key != "charts" && item.Key != "page-push" && item.Key != "test" && item.Key != "reversi" && item.Key != "bubble-game")
                 {
                     code = Controller.GenerateRequestCode(jsonNode, item, "Misharp.Controls");
-                    string path = $"./Controls/{ApiDocument.ConvertToPascalCase(item.Key)}.cs";
+                    string path = $"./Controls/{Shared.ConvertToPascalCase(item.Key)}.cs";
                     new FileInfo(path).Directory?.Create();
                     File.WriteAllText(path, code);
-                    apis.Append($"\tpublic {ApiDocument.ConvertToPascalCase(item.Key)}Api {ApiDocument.ConvertToPascalCase(item.Key)}Api {{ get; }}\n");
-                    constructApis.Append($"\t\tthis.{ApiDocument.ConvertToPascalCase(item.Key)}Api = new {ApiDocument.ConvertToPascalCase(item.Key)}Api(this);\n");
+                    apis.Append($"\tpublic {Shared.ConvertToPascalCase(item.Key)}Api {Shared.ConvertToPascalCase(item.Key)}Api {{ get; }}\n");
+                    constructApis.Append($"\t\tthis.{Shared.ConvertToPascalCase(item.Key)}Api = new {Shared.ConvertToPascalCase(item.Key)}Api(this);\n");
                 }
             }
             Console.WriteLine(apis.ToString());

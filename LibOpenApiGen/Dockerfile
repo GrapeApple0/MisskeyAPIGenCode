@@ -7,4 +7,4 @@ RUN git submodule update --init --recursive
 RUN npm install -g pnpm
 RUN pnpm install
 RUN cp /misskey/.config/example.yml /misskey/.config/default.yml
-ENTRYPOINT ["/bin/sh", "-c" , "pnpm --filter misskey-reversi run build && pnpm build-pre && pnpm --filter backend run generate-api-json && cp packages/backend/built/api.json ./.docker-tmp"]
+ENTRYPOINT ["/bin/sh", "-c" , "git pull && pnpm --filter misskey-reversi run build && pnpm build-pre && pnpm --filter misskey-js run build  && pnpm build-misskey-js-with-types && pnpm --filter backend run generate-api-json && cp packages/backend/built/api.json ./.docker-tmp"]
