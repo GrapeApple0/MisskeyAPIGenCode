@@ -14,47 +14,10 @@ namespace LibOpenApiGen
             string name;
             foreach (var property in properties)
             {
-                var propertyType = Shared.GetPropertyType(property.Value, sb, Shared.ConvertToPascalCase(property.Key), "");
+                var propertyType = Shared.GetPropertyType(property.Value, sb, Shared.ConvertToPascalCase(property.Key), "", 2);
                 name = Shared.ConvertToPascalCase(property.Key); 
                 type = propertyType.Type;
                 var nullable = propertyType.Nullable;
-                if (type.StartsWith("object"))
-                {
-                    if (property.Value.Properties != null)
-                    {
-                        sb.Append($"\t\tpublic class {name}Property {{\n");
-                        Shared.GeneratePropertiesCode(sb, property.Value.Properties, "", 3);
-                        Shared.GenerateToStringCode(sb, property.Value.Properties);
-                        sb.Append("\t\t}\n");
-                        type = $"{name}Property{(nullable ? "?" : "")}";
-                    }
-                    else if (property.Value.AdditionalProperties != null)
-                    {
-                        Console.WriteLine(name);
-                        if (property.Value.AdditionalProperties is JsonValue jv && jv.AsValue().TryGetValue<bool>(out var b))
-                        {
-                            if (b)
-                            {
-                                type = $"Dictionary<string, JsonNode>";
-                            }
-                        }
-                        else if (property.Value.AdditionalProperties["properties"] != null)
-                        {
-                            var sb2 = new StringBuilder();
-                            var additionalProperties = JsonSerializer.Deserialize<Property>(property.Value.AdditionalProperties);
-                            GeneratePropertiesCode(sb2, new Dictionary<string, Property>() { { $"{name}Object", additionalProperties } });
-                            Console.WriteLine(sb2.ToString());
-                        }
-                    }
-                } 
-                else if (type.StartsWith("List<object>") && property.Value.Items != null && property.Value.Items.Properties != null)
-                {
-                    sb.Append($"\t\t\tpublic class {name}ItemsProperty {{\n");
-                    Shared.GeneratePropertiesCode(sb, property.Value.Items.Properties, "", 4);
-                    Shared.GenerateToStringCode(sb, property.Value.Items.Properties, indent: 4);
-                    sb.Append("\t\t\t}\n");
-                    type = $"List<{name}ItemsProperty{(nullable ? "?" : "")}>";
-                }
                 sb.Append($"\t\t\tpublic {type} {name} {{ get; set; }}\n");
             }
         }
@@ -73,28 +36,20 @@ namespace LibOpenApiGen
                     string rawType = "";
                     bool nullable = false;
                     bool isIdOrDate = false;
-                    if (prop.Type == null)
-                    {
-                        rawType = "JsonNode";
-                    }
+                    if (prop.Type == null) rawType = "JsonNode";
                     else if (prop.Type is JsonArray ja)
                     {
                         if (ja != null && ja.Count > 0) rawType = ja[0]?.ToString() ?? "";
                         nullable = true;
                     }
                     else if (prop.Type is JsonValue jv && jv.AsValue().TryGetValue<string>(out var s))
-                    {
                         rawType = s;
-                    }
                     else
                     {
                         var st = prop.Type.ToString();
                         rawType = prop.Type != null && st != null ? st : "";
                     }
-                    if (prop.Format == "date-time")
-                    {
-                        rawType = "DateTime";
-                    }
+                    if (prop.Format == "date-time") rawType = "DateTime";
                     if (rawType == "array")
                     {
                         if (prop.Items?.Type != null)
@@ -106,28 +61,12 @@ namespace LibOpenApiGen
                                 rawType = $"List<Model.{Ref}>";
                             }
                             if (prop.Items != null && prop.Items.Items != null && prop.Items.Items.Type != null)
-                            {
                                 rawType = $"List<List<{prop.Items.Items.Type}>>";
-                            }
                         }
-                        else
-                        {
-                            rawType = "List<JsonNode>";
-                        }
+                        else rawType = "List<JsonNode>";
                         nullable = true;
                     }
-                    if (rawType == "number")
-                    {
-                        rawType = "decimal";
-                    }
-                    if (rawType == "boolean")
-                    {
-                        rawType = "bool";
-                    }
-                    if (rawType == "integer")
-                    {
-                        rawType = "int";
-                    }
+                    rawType = Shared.ConvertJavaScriptTypeToCSharpType(rawType);
                     if (p.Key == "untilId" || p.Key == "sinceId" || p.Key == "untilDate" || p.Key == "sinceDate")
                     {
                         nullable = true;
@@ -144,28 +83,20 @@ namespace LibOpenApiGen
                         if (prop.Properties != null)
                         {
                             sb2.Append($"\t\tpublic class {Shared.ConvertToPascalCase(funcName.Replace("/", "-"))}{Shared.ConvertToPascalCase(p.Key)}ParamObject {{\n");
-                            Shared.GeneratePropertiesCode(sb2, prop.Properties, "", 3);
-                            Shared.GenerateToStringCode(sb2, prop.Properties);
+                            Shared.GeneratePropertiesCode(sb2, prop.Properties, "", 2);
+                            Shared.GenerateToStringCode(sb2, prop.Properties, indent: 3);
                             sb2.Append("\t\t}\n");
                             rawType = $"{Shared.ConvertToPascalCase(funcName.Replace("/", "-"))}{Shared.ConvertToPascalCase(p.Key)}ParamObject";
                         }
                     }
-                    if (nullable)
-                    {
-                        rawType += "?";
-                    }
+                    if (nullable) rawType += "?";
                     if (!isIdOrDate)
                     {
                         if (prop.Default != null || nullable || rawType == "array")
-                        {
                             usingDefaultParams.Add(p.Key, p.Value[1] as Property);
-                        }
                         else if (prop != null)
                         {
-                            if (prop.Format != null && prop.Format == "binary")
-                            {
-                                rawType = "Stream";
-                            }
+                            if (prop.Format != null && prop.Format == "binary") rawType = "Stream";
                             if (prop.Enum != null)
                             {
                                 enums.Add(Shared.ConvertToPascalCase(funcName) + Shared.ConvertToPascalCase(p.Key), prop.Enum);
@@ -185,10 +116,7 @@ namespace LibOpenApiGen
                     var defaultValue = $"{prop.Default}";
                     string rawType = "";
                     bool nullable = false;
-                    if (prop.Type == null)
-                    {
-                        rawType = "JsonNode";
-                    }
+                    if (prop.Type == null) rawType = "JsonNode";
                     else if (prop.Type is JsonArray ja)
                     {
                         if (ja != null && ja.Count > 0 && ja[0] != null) rawType = ja[0].ToString();
@@ -230,10 +158,7 @@ namespace LibOpenApiGen
                                 rawType = $"List<List<{prop.Items.Items.Type}>>";
                             }
                         }
-                        else
-                        {
-                            rawType = "List<JsonNode>";
-                        }
+                        else rawType = "List<JsonNode>";
                     }
                     if (prop.Enum != null)
                     {
@@ -245,33 +170,8 @@ namespace LibOpenApiGen
                             defaultValue = $"{Shared.ConvertToPascalCase(funcName) + Shared.ConvertToPascalCase(p.Key)}Enum.{v}";
                         }
                     }
-                    if (prop.Format == "date-time")
-                    {
-                        rawType = "DateTime";
-                    }
-                    if (rawType == "number")
-                    {
-                        rawType = "decimal";
-                    }
-                    if (rawType == "boolean")
-                    {
-                        rawType = "bool";
-                    }
-                    if (rawType == "integer")
-                    {
-                        rawType = "int";
-                    }
-                    //if (rawType == "object")
-                    //{
-                    //    rawType = "JsonNode";
-                    //    if (prop.Properties != null)
-                    //    {
-                    //        sb.Append($"\t\tpublic class {Shared.ConvertToPascalCase(funcName.Replace("/", "-"))}{Shared.ConvertToPascalCase(p.Key)}ParamObject {{\n");
-                    //        Modeller.GeneratePropertiesCode(sb, prop.Properties, "", 3);
-                    //        sb.Append("\t\t}\n");
-                    //        rawType = $"{Shared.ConvertToPascalCase(funcName.Replace("/", "-"))}{Shared.ConvertToPascalCase(p.Key)}ParamObject";
-                    //    }
-                    //}
+                    if (prop.Format == "date-time") rawType = "DateTime";
+                    rawType = Shared.ConvertJavaScriptTypeToCSharpType(rawType);
                     sb.Append($"{rawType}{(nullable || defaultValue == "null" ? "?" : "")} {p.Key} = {defaultValue}");
                     if (!p.Equals(usingDefaultParams.ToList().Last())) sb.Append(",");
                 }
@@ -341,10 +241,8 @@ namespace LibOpenApiGen
                 if (responseSchema.Type != null)
                 {
                     var rawType = responseSchema.Type.ToString();
+                    responseType = Shared.ConvertJavaScriptTypeToCSharpType(rawType);
                     if (rawType == "object") responseType = "JsonNode";
-                    if (rawType == "number") responseType = "decimal";
-                    if (rawType == "integer") responseType = "int";
-                    if (rawType == "boolean") responseType = "bool";
                 }
                 if (responseSchema.Ref != null) // モデルを参照する場合
                 {
@@ -355,28 +253,23 @@ namespace LibOpenApiGen
                 {
                     sb.Append($"\t\tpublic class {responseClassName}Response {{\n");
                     GeneratePropertiesCode(sb, responseSchema.Properties);
-                    Shared.GenerateToStringCode(sb, responseSchema.Properties);
+                    Shared.GenerateToStringCode(sb, responseSchema.Properties, indent: 3);
                     sb.Append("\t\t}\n");
                     responseType = $"{responseClassName}Response";
                 }
                 if (responseSchema.Items != null)
-                {
                     responseType = $"List<{Shared.GetPropertyType(responseSchema.Items, sb, "Response", responseClassName + "Item").Type}>";
-                }
                 if (responseSchema.OneOf != null || responseSchema.AnyOf != null || responseSchema.AllOf != null)
                 {
                     var responseProperties = Shared.ReturnAllPropertiesDictionary(responseSchema, jsonNode.Components["schemas"]);
                     sb.Append($"\t\tpublic class {responseClassName}Response {{\n");
                     GeneratePropertiesCode(sb, responseProperties);
-                    Shared.GenerateToStringCode(sb, responseProperties);
+                    Shared.GenerateToStringCode(sb, responseProperties, indent: 3);
                     sb.Append("\t\t}\n");
                     responseType = $"{responseClassName}Response";
                 }
             }
-            else if (nothingReturn)
-            {
-                responseType = "Model.EmptyResponse";
-            }
+            else if (nothingReturn) responseType = "Model.EmptyResponse";
             return responseType;
         }
 
@@ -391,21 +284,21 @@ namespace LibOpenApiGen
             sb.Append($"\tpublic class {Shared.ConvertToPascalCase(pathTrees.Key)}Api {{\n");
             sb.Append("\t\tprivate Misharp.App _app;\n");
             var thirdClassName = new Dictionary<string, List<string>>();
-            pathTrees.Value.ForEach(path =>
+            foreach (var pathTree in pathTrees.Value)
             {
                 // 2FA関連のパスは除外
-                if (!path.StartsWith("i/2fa"))
+                if (pathTree.StartsWith("i/2fa")) continue;
+                if (pathTree.StartsWith("drive/files/check-existence")) continue;
+                var pathMethod = jsonNode.Paths[$"/{pathTree}"][ApiDocument.HttpMethod.Post];
+                var trees = pathMethod.Summary.Split("/");
+                // パスが3階層以上の場合は別途クラスを作るように
+                if (trees.Length >= 3)
                 {
-                    var pathMethod = jsonNode.Paths[$"/{path}"][ApiDocument.HttpMethod.Post];
-                    var trees = pathMethod.Summary.Split("/");
-                    // パスが3階層以上の場合は別途クラスを作るように
-                    if (trees.Length >= 3)
-                    {
-                        if (!thirdClassName.ContainsKey(trees[1])) thirdClassName[trees[1]] = new List<string> { pathMethod.Summary };
-                        else thirdClassName[trees[1]].Add(pathMethod.Summary);
-                    }
+                    if (!thirdClassName.ContainsKey(trees[1])) 
+                        thirdClassName[trees[1]] = new List<string> { pathMethod.Summary };
+                    else thirdClassName[trees[1]].Add(pathMethod.Summary);
                 }
-            });
+            }
             thirdClassName.Keys.ToList().ForEach(className =>
             {
                 sb.Append($"\t\tpublic {Shared.ConvertToPascalCase(pathTrees.Key)}.{Shared.ConvertToPascalCase(className)}Api {Shared.ConvertToPascalCase(className)}Api;\n");
@@ -445,10 +338,10 @@ namespace LibOpenApiGen
                     else if (pathMethod.RequestBody.Content.ContainsKey("multipart/form-data"))
                         requestBodySchema = pathMethod.RequestBody.Content["multipart/form-data"].Schema;
                     requestBodySchema?.Properties?.ToList().ForEach(property =>
-                        {
-                            var type = Shared.GetPropertyType(property.Value, sb, Shared.ConvertToPascalCase(property.Key), "", 3);
-                            ps.Add(property.Key, new object[] { type.Type, property.Value });
-                        });
+                    {
+                        var type = Shared.GetPropertyType(property.Value, sb, Shared.ConvertToPascalCase(property.Key), "", 2);
+                        ps.Add(property.Key, new object[] { type.Type, property.Value });
+                    });
                 }
                 if (trees.Length <= 2) // パスが2階層以下の場合
                 {
@@ -457,15 +350,11 @@ namespace LibOpenApiGen
                     var responseType = "";
                     funcName = Shared.ConvertToPascalCase(trees[^1]);
                     responseType = GetResponseType(responseSchema, jsonNode, sb, funcName, nothingReturn);
-                    Console.WriteLine(responseType);
                     GenerateFunction(sb, ps, pathMethod,
                                      pathTree, ref enums, needParam,
                                      funcName, responseType);
                 }
-                if (enums.Count > 0)
-                {
-                    GenerateEnums(sb, enums);
-                }
+                if (enums.Count > 0) GenerateEnums(sb, enums);
             }
             sb.Append("\t}\n");
             enums = new Dictionary<string, string[]>();
@@ -521,16 +410,12 @@ namespace LibOpenApiGen
                         string responseType = "";
                         var responseClassName = Shared.ConvertToPascalCase(trees[0]) + Shared.ConvertToPascalCase(trees[1]) + Shared.ConvertToPascalCase(trees[2]);
                         responseType = GetResponseType(responseSchema, jsonNode, sb, responseClassName, nothingReturn);
-                        Console.WriteLine(responseType);
                         GenerateFunction(sb, ps, pathMethod, pathTree,
                                              ref enums, needParam, funcName, responseType, useForm);
                     }
                     sb.Append("\t}\n");
                 });
-                if (enums.Count > 0)
-                {
-                    GenerateEnums(sb, enums);
-                }
+                if (enums.Count > 0) GenerateEnums(sb, enums);
             }
             sb.Append('}');
             var code = sb.ToString();

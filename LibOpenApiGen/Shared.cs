@@ -9,6 +9,14 @@ namespace LibOpenApiGen
 {
 	public static class Shared
 	{
+		public static string ConvertJavaScriptTypeToCSharpType(string type)
+		{
+			if (type == "number") return "decimal";
+			if (type == "integer") return "int";
+			if (type == "boolean") return "bool";
+			return type;
+		}
+
 		public static string ConvertToPascalCase(string str)
 		{
 			return Regex.Replace(str, @"(^\w|-\w)", (e) => e.Value.Replace("-", "").ToUpper());//Regex.Replace(str, @"\b\p{Ll}", match => match.Value.ToUpper());
@@ -176,21 +184,17 @@ namespace LibOpenApiGen
 		public static string ParseAdditionalProperties(JsonNode? additionalProperties)
 		{
 			if (additionalProperties == null) return "";
-			if (additionalProperties is JsonValue jv && jv.AsValue().TryGetValue<bool>(out var b))
+			if (additionalProperties is JsonValue jv && jv.AsValue().TryGetValue<bool>(out var b) && b)
 			{
-				if (b)
-				{
-					return "Dictionary<string, JsonNode>";
-				}
+				return "Dictionary<string, JsonNode>";
 			}
 			else if (additionalProperties["anyOf"] != null &&
 				additionalProperties["anyOf"] is JsonArray ja &&
 				ja.Count == 1)
 			{
-				var additionalPropertiesProperty = JsonSerializer.Deserialize<Property>(ja[0]?.ToString() ?? "");
-				if (additionalPropertiesProperty != null)
+				if (ja[0] != null)
 				{
-					var dicType = additionalPropertiesProperty.Type?.ToString() ?? "";
+					var dicType = ja[0]?["type"]?.ToString() ?? "";
 					if (dicType == "number") dicType = "decimal";
 					if (dicType == "integer") dicType = "int";
 					if (dicType == "boolean") dicType = "bool";
@@ -236,7 +240,7 @@ namespace LibOpenApiGen
 			if (property.Ref != null)
 			{
 				var Ref = property.Ref.Replace("#/components/schemas/", "");
-				type = $"{Ref}";
+				type = $"Model.{Ref}";
 			}
 			else
 			{
@@ -250,7 +254,7 @@ namespace LibOpenApiGen
 					type = $"{model}{name}Object";
 					sb.Append($"{indentStr}public class {type} {{\n");
 					GeneratePropertiesCode(sb, property.Properties, model, indent + 1);
-					GenerateToStringCode(sb, property.Properties, type, indent + 1);
+					GenerateToStringCode(sb, property.Properties, type, indent + 2);
 					sb.Append($"{indentStr}}}\n");
 				}
 				else if (property.AllOf != null)
@@ -292,21 +296,21 @@ namespace LibOpenApiGen
 								string className = $"{model}{name}ItemType";
 								sb.Append($"{indentStr}public class {className} {{\n");
 								GeneratePropertiesCode(sb, new Dictionary<string, Property>() { { name, property.Items } }, className, indent + 1);
-								GenerateToStringCode(sb, new Dictionary<string, Property>() { { name, property.Items } }, className, indent + 1);
+								GenerateToStringCode(sb, new Dictionary<string, Property>() { { name, property.Items } }, className, indent + 2);
 								sb.Append($"{indentStr}}}\n");
 								type = $"{listType}<{name}ItemType>";
 							}
 							if (property.Items.Ref != null)
 							{
-								var Ref = property.Items.Ref.Replace("#/components/schemas/", "");
-								type = $"{listType}<{Ref}>";
+								var _ref = property.Items.Ref.Replace("#/components/schemas/", "");
+								type = $"{listType}<Model.{_ref}>";
 							}
 							// リストでオブジェクトがある場合はクラスを生成
 							if (itemsType == "object" && property.Items.Properties != null)
 							{
 								sb.Append($"{indentStr}public class {model}{name}PropertyType {{\n");
 								GeneratePropertiesCode(sb, property.Items.Properties, model, indent + 1);
-								GenerateToStringCode(sb, property.Items.Properties, $"{model}{name}PropertyType", indent + 1);
+								GenerateToStringCode(sb, property.Items.Properties, $"{model}{name}PropertyType", indent + 2);
 								sb.Append($"{indentStr}}}\n");
 								type = $"{listType}<{model}{name}PropertyType>";
 							}
@@ -331,8 +335,8 @@ namespace LibOpenApiGen
 								type = $"{listType}<List<{itemsItemType}>>";
 								if (property.Items.Items.Ref != null)
 								{
-									var Ref = property.Items.Items.Ref.Replace("#/components/schemas/", "");
-									type = $"{listType}<List<{Ref}>>";
+									var _ref = property.Items.Items.Ref.Replace("#/components/schemas/", "");
+									type = $"{listType}<List<Model.{_ref}>>";
 								}
 								else if (property.Items.Items != null && property.Items.Items.Type != null)
 								{
@@ -351,6 +355,7 @@ namespace LibOpenApiGen
 			if (type == "number") type = "decimal";
 			if (type == "integer") type = "int";
 			if (type == "boolean") type = "bool";
+			if (type == "") type = "JsonNode";
 			return new PropertyType(type, nullable);
 		}
 

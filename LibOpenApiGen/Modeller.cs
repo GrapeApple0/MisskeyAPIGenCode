@@ -6,12 +6,11 @@ namespace LibOpenApiGen
 {
     public static class Modeller
     {
-        private static bool useList = false;
-
         public static string GenerateModelCode(Dictionary<string, Schema> root, string model, string ns)
         {
             var component = root[model];
             string code;
+            bool useList = false;
             var sb = new StringBuilder();
             sb.Append("using System.Text.Json;\n");
             sb.Append("using System.Text.Json.Nodes;\n");
@@ -33,10 +32,7 @@ namespace LibOpenApiGen
                 Shared.GenerateToStringCode(sb2, properties, model);
             }
             sb.Append($"\tpublic class {model} ");
-            if (baseModels.Count == 1)
-            {
-                sb.Append($": {baseModels[0]} ");
-            }
+            if (baseModels.Count == 1) sb.Append($": {baseModels[0]} ");
             // C#は多重継承を受け入れていないので2つ以上になるとこれらのクラスのさらに基底クラスの生成が必要
             sb.Append("{\n");
             sb.Append(sb2);
